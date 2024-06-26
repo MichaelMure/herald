@@ -3,44 +3,46 @@ package herald
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/go-libipni/dagsync/ipnisync/head"
+	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-var (
-	_ Publisher = (*httpPublisher)(nil)
+// httpPublisher is an IPNI HTTP publisher that expose the IPNI chain for retrieval.
+// It uses a chainBackend as storage and render the records on demand.
+type httpPublisher struct {
+	backend chainBackendRaw
+	server  http.Server
 
-	ErrContentNotFound = errors.New("content is not found")
-
-	contentBuffers = sync.Pool{
-		New: func() any { return new([1024]byte) },
-	}
-)
-
-type (
-	httpPublisher struct {
-		h           *Herald
-		server      http.Server
-		dsPublisher *dsPublisher
-	}
-)
-
-func newHttpPublisher(h *Herald, dspub *dsPublisher) (*httpPublisher, error) {
-	var pub httpPublisher
-	pub.h = h
-	pub.server.Handler = pub.serveMux()
-	pub.dsPublisher = dspub
-	return &pub, nil
+	// topic is the IPNI topic name on which the advertisement is published
+	topic string
+	// providerKey is the keypair of the IPNI publisher
+	providerKey crypto.PrivKey
 }
 
-func (p *httpPublisher) Start(ctx context.Context) error {
-	listener, err := net.Listen("tcp", p.h.httpPublisherListenAddr)
+func newHttpPublisher(backend chainBackendRaw, listenAddr string, topic string, providerKey crypto.PrivKey) (*httpPublisher, error) {
+	pub := &httpPublisher{
+		backend: backend,
+		server: http.Server{
+			Addr:              listenAddr,
+			ReadTimeout:       10 * time.Second,
+			ReadHeaderTimeout: 10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+		},
+		topic:       topic,
+		providerKey: providerKey,
+	}
+	pub.server.Handler = pub.serveMux()
+	return pub, nil
+}
+
+func (p *httpPublisher) Start() error {
+	listener, err := net.Listen("tcp", p.server.Addr)
 	if err != nil {
 		return err
 	}
@@ -69,7 +71,7 @@ func (p *httpPublisher) handleGetHead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	h, err := p.GetHead(r.Context())
+	h, err := p.backend.GetHead(r.Context())
 	if err != nil {
 		logger.Errorw("failed to get head CID", "err", err)
 		http.Error(w, "", http.StatusInternalServerError)
@@ -79,7 +81,7 @@ func (p *httpPublisher) handleGetHead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusNoContent)
 		return
 	}
-	signedHead, err := head.NewSignedHead(h, p.h.topic, p.h.identity)
+	signedHead, err := head.NewSignedHead(h, p.topic, p.providerKey)
 	if err != nil {
 		logger.Errorw("failed to generate signed head message", "err", err)
 		http.Error(w, "", http.StatusInternalServerError)
@@ -110,55 +112,39 @@ func (p *httpPublisher) handleGetContent(w http.ResponseWriter, r *http.Request)
 	id, err := cid.Decode(pathParam)
 	if err != nil {
 		logger.Debugw("invalid CID as path parameter while getting content", "pathParam", pathParam, "err", err)
-		http.Error(w, "invalid CID: "+pathParam, http.StatusBadRequest)
+		http.Error(w, "invalid CID", http.StatusBadRequest)
 		return
 	}
-	switch body, err := p.GetContent(r.Context(), id); {
-	case errors.Is(err, ErrContentNotFound):
+	content, err := p.backend.GetContent(r.Context(), id)
+	if errors.Is(err, ErrContentNotFound) {
 		http.Error(w, "", http.StatusNotFound)
 		return
-	case err != nil:
+	}
+	if err != nil {
 		logger.Errorw("failed to get content from store", "id", id, "err", err)
 		http.Error(w, "", http.StatusInternalServerError)
 		return
+	}
+
+	switch id.Prefix().Codec {
+	case cid.DagJSON:
+		w.Header().Set("Content-Type", "application/json")
+	case cid.DagCBOR:
+		w.Header().Set("Content-Type", "application/cbor")
 	default:
-		defer func() {
-			if err := body.Close(); err != nil {
-				logger.Debugw("failed to close reader for content", "id", id, "err", err)
-			}
-		}()
-		switch id.Prefix().Codec {
-		case cid.DagJSON:
-			w.Header().Set("Content-Type", "application/json")
-		case cid.DagCBOR:
-			w.Header().Set("Content-Type", "application/cbor")
-		}
-		buf := contentBuffers.Get().(*[1024]byte)
-		defer contentBuffers.Put(buf)
-		if written, err := io.CopyBuffer(w, body, buf[:]); err != nil {
-			logger.Errorw("failed to write content response", "written", written, "err", err)
-		} else {
-			logger.Debugw("successfully responded with content", "id", id, "written", written)
-		}
+		logger.Errorw("unknown block codec", "cid", id.String(), "codec", id.Prefix().Codec)
+		http.Error(w, "invalid block", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(content)
+	if err != nil {
+		logger.Errorw("failed to write content response", "err", err)
 	}
 }
 
-func (p *httpPublisher) Publish(ctx context.Context, catalog Catalog) (cid.Cid, error) {
-	return p.dsPublisher.Publish(ctx, catalog)
-}
-
-func (p *httpPublisher) Retract(ctx context.Context, id CatalogID) (cid.Cid, error) {
-	return p.dsPublisher.Retract(ctx, id)
-}
-
-func (p *httpPublisher) GetContent(ctx context.Context, id cid.Cid) (io.ReadCloser, error) {
-	return p.dsPublisher.GetContent(ctx, id)
-}
-
-func (p *httpPublisher) GetHead(ctx context.Context) (cid.Cid, error) {
-	return p.dsPublisher.GetHead(ctx)
-}
-
-func (p *httpPublisher) Shutdown(ctx context.Context) error {
+func (p *httpPublisher) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	return p.server.Shutdown(ctx)
 }
