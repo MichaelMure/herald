@@ -1,8 +1,6 @@
 package herald
 
 import (
-	"context"
-
 	"github.com/ipfs/go-log/v2"
 )
 
@@ -30,21 +28,22 @@ func New(o ...Option) (*Herald, error) {
 		return nil, err
 	}
 	h := &Herald{options: opts}
-	dspub, err := newDsPublisher(h)
-	if err != nil {
-		return nil, err
-	}
-	h.publisher, err = newHttpPublisher(h, dspub)
-	if err != nil {
-		return nil, err
-	}
+	// dspub, err := newDsPublisher(h)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// h.publisher, err = newHttpPublisher(h, dspub)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return h, err
 }
 
-func (h *Herald) Start(ctx context.Context) error {
-	return h.publisher.Start(ctx)
-}
-
-func (h *Herald) Shutdown(ctx context.Context) error {
-	return h.publisher.Shutdown(ctx)
-}
+//
+// func (h *Herald) Start(ctx context.Context) error {
+// 	return h.publisher.Start(ctx)
+// }
+//
+// func (h *Herald) Shutdown(ctx context.Context) error {
+// 	return h.publisher.Shutdown(ctx)
+// }

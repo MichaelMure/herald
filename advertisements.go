@@ -2,6 +2,7 @@ package herald
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -35,8 +36,13 @@ type chainConfig struct {
 // - below that threshold: batch together small publish over a time window, publish without ContextID, retract with all MHs
 // Note: batching could happen at the Catalog level, it doesn't have to be intertwined in the code below
 
-// Publish generate the IPNI advertisements blocks for the publishing of the given catalog.
-func Publish(ctx context.Context, cfg chainConfig, backend chainBackend, catalog Catalog) (cid.Cid, error) {
+// publishWithContextID generate the IPNI advertisement and chunks for the publishing of the given catalog.
+// A ContextID is used as an identifier for easy retraction.
+func publishWithContextID(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+	if len(catalog.ID()) == 0 {
+		return cid.Undef, fmt.Errorf("no valid ContextID to publish")
+	}
+
 	// generate the chain of chunks holding the multihashes
 	entries, err := generateEntries(ctx, cfg, backend, catalog)
 	if err != nil {
@@ -46,12 +52,34 @@ func Publish(ctx context.Context, cfg chainConfig, backend chainBackend, catalog
 	return generateAdvertisement(ctx, cfg, backend, catalog.ID(), entries, false)
 }
 
-func Retract(ctx context.Context, cfg chainConfig, backend chainBackend, catalog Catalog) (cid.Cid, error) {
+// retractWithContextID generate the IPNI advertisement to retract the given catalog, using a ContextID.
+func retractWithContextID(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
 	return generateAdvertisement(ctx, cfg, backend, catalog.ID(), schema.NoEntries, true)
 }
 
+// publishRawMHs generate the IPNI advertisement and chunks for the publishing of the given catalog, without ContextID.
+func publishRawMHs(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+	// generate the chain of chunks holding the multihashes
+	entries, err := generateEntries(ctx, cfg, backend, catalog)
+	if err != nil {
+		return cid.Undef, err
+	}
+	// generate the root advertisement with all the metadata
+	return generateAdvertisement(ctx, cfg, backend, nil, entries, false)
+}
+
+func retractRawMHs(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+	// generate the chain of chunks holding the multihashes
+	entries, err := generateEntries(ctx, cfg, backend, catalog)
+	if err != nil {
+		return cid.Undef, err
+	}
+	// generate the root retract advertisement with all the metadata
+	return generateAdvertisement(ctx, cfg, backend, nil, entries, true)
+}
+
 // generateEntries produce all the linked chunks necessary to store the multihashes entry of the given catalog
-func generateEntries(ctx context.Context, cfg chainConfig, backend chainBackend, catalog Catalog) (ipld.Link, error) {
+func generateEntries(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (ipld.Link, error) {
 	mhs := make([]multihash.Multihash, 0, cfg.adEntriesChunkSize)
 	var next ipld.Link
 	var mhCount, chunkCount int
@@ -85,7 +113,7 @@ func generateEntries(ctx context.Context, cfg chainConfig, backend chainBackend,
 
 // generateEntriesChunk produce a single multihashes entry chunk containing mhs.
 // If next is not nil, the produced chunk will be chained with next.
-func generateEntriesChunk(ctx context.Context, backend chainBackend, next ipld.Link, mhs []multihash.Multihash) (ipld.Link, error) {
+func generateEntriesChunk(ctx context.Context, backend chainWriter, next ipld.Link, mhs []multihash.Multihash) (ipld.Link, error) {
 	chunk, err := schema.EntryChunk{
 		Entries: mhs,
 		Next:    next,
@@ -96,7 +124,7 @@ func generateEntriesChunk(ctx context.Context, backend chainBackend, next ipld.L
 	return backend.Store(ipld.LinkContext{Ctx: ctx}, schema.Linkproto, chunk)
 }
 
-func generateAdvertisement(ctx context.Context, cfg chainConfig, backend chainBackend, id CatalogID, entries ipld.Link, isRm bool) (cid.Cid, error) {
+func generateAdvertisement(ctx context.Context, cfg chainConfig, backend chainWriter, id CatalogID, entries ipld.Link, isRm bool) (cid.Cid, error) {
 	var newHead cid.Cid
 
 	err := backend.UpdateHead(ctx, func(head cid.Cid) (cid.Cid, error) {

@@ -18,13 +18,17 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipni/go-libipni/dagsync/ipnisync/head"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/multiformats/go-multibase"
 )
 
-var _ chainBackend = &s3Backend{}
+var _ chainWriter = &s3Backend{}
 
-// s3Backend is a chainBackend storing the IPNI chain in S3, in a form that can directly be exposed publicly
+// s3Backend is an IPNI publishing backend storing the IPNI chain in S3, in a form that can directly be exposed publicly
 // through HTTP. As such, it doesn't need an additional publisher.
+//
+// Note on the implementation: the idea is to "pre-render" the chain into the expected format described by
+// https://github.com/ipni/specs/blob/main/IPNI_HTTP_PROVIDER.md. Yet we still need an ipld.LinkSystem to process the
+// IPLD nodes into blocks. To do so, we attach a StorageWriteOpener function that will push the block to S3 in the correct
+// manner.
 type s3Backend struct {
 	locker sync.RWMutex // atomicity over the chain head
 	head   cid.Cid      // cache the head CID
@@ -60,10 +64,11 @@ func (s *s3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, 
 
 		c := lnk.(cidlink.Link).Cid
 
-		key, err := c.StringOfBase(multibase.Base32)
-		if err != nil {
-			return err
-		}
+		// The IPNI specification doesn't specify the CID encoding used to retrieve a block, so there is a risk here
+		// that we don't actually have the file at the right S3 key matching the encoding used by the client.
+		// However, go-libipni simply use cid.String(), which default to base32 for cidv1.
+		// There is no reason to do anything else client side, so that should be robust.
+		key := fmt.Sprintf("/ipni/v1/ad/%s", c.String())
 
 		var contentType string
 		switch c.Prefix().Codec {
@@ -75,20 +80,18 @@ func (s *s3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, 
 			return fmt.Errorf("unknown block codec, cid %s, coded %v", c.String(), c.Prefix().Codec)
 		}
 
-		_, err = s.client.PutObject(linkCtx.Ctx, &s3.PutObjectInput{
+		_, err := s.client.PutObject(linkCtx.Ctx, &s3.PutObjectInput{
 			Bucket:       s.bucket,
 			Key:          aws.String(key),
 			Body:         buf,
 			ContentType:  aws.String(contentType),
 			CacheControl: aws.String("public, max-age=29030400, immutable"),
 		})
-		if err != nil {
-			return err
-		}
+		return err
 	}, nil
 }
 
-func (s *s3Backend) UpdateHead(ctx context.Context, fn func(head cid.Cid) (cid.Cid, error)) error {
+func (s *s3Backend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
 	s.locker.Lock()
 	defer s.locker.Unlock()
 
@@ -158,7 +161,7 @@ func (s *s3Backend) setHead(ctx context.Context, newHead cid.Cid) error {
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:       s.bucket,
-		Key:          aws.String("head"),
+		Key:          aws.String("/ipni/v1/ad/head"),
 		Body:         bytes.NewReader(encoded),
 		ContentType:  aws.String("application/json"),
 		CacheControl: aws.String("no-cache, no-store, must-revalidate"),

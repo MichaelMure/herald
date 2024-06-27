@@ -13,10 +13,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-// httpPublisher is an IPNI HTTP publisher that expose the IPNI chain for retrieval.
-// It uses a chainBackend as storage and render the records on demand.
+// httpPublisher is an IPNI HTTP publisher that exposes the IPNI chain for retrieval.
+// It uses a chainWriter as storage and render the records on demand.
 type httpPublisher struct {
-	backend chainBackendRaw
+	backend chainReader
 	server  http.Server
 
 	// topic is the IPNI topic name on which the advertisement is published
@@ -25,7 +25,7 @@ type httpPublisher struct {
 	providerKey crypto.PrivKey
 }
 
-func newHttpPublisher(backend chainBackendRaw, listenAddr string, topic string, providerKey crypto.PrivKey) (*httpPublisher, error) {
+func newHttpPublisher(backend chainReader, listenAddr string, topic string, providerKey crypto.PrivKey) (*httpPublisher, error) {
 	pub := &httpPublisher{
 		backend: backend,
 		server: http.Server{

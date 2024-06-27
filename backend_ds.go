@@ -16,10 +16,10 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-var _ chainBackend = &dsBackend{}
-var _ chainBackendRaw = &dsBackend{}
+var _ chainWriter = &dsBackend{}
+var _ chainReader = &dsBackend{}
 
-// dsBackend is an IPNI publishing backend that store the chain in a datastore.Datastore.
+// dsBackend is an IPNI publishing backend that stores the chain in a datastore.Datastore.
 type dsBackend struct {
 	locker sync.RWMutex // atomicity over the chain head
 	head   cid.Cid      // cache the head CID
@@ -58,7 +58,7 @@ func dsKey(l ipld.Link) datastore.Key {
 }
 
 // UpdateHead perform an atomic update of the IPNI chain head
-func (p *dsBackend) UpdateHead(ctx context.Context, fn func(head cid.Cid) (cid.Cid, error)) error {
+func (p *dsBackend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
 	p.locker.Lock()
 	defer p.locker.Unlock()
 
