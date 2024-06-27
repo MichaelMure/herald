@@ -14,7 +14,7 @@ import (
 )
 
 // httpPublisher is an IPNI HTTP publisher that exposes the IPNI chain for retrieval.
-// It uses a chainWriter as storage and render the records on demand.
+// It uses a chainWriter as storage and renders the records on demand.
 type httpPublisher struct {
 	backend chainReader
 	server  http.Server

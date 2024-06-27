@@ -10,6 +10,7 @@ import (
 	"github.com/ipni/go-libipni/ingest/schema"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -25,16 +26,11 @@ type chainConfig struct {
 	// providerAddrs is the list of multiaddrs from which the content will be retrievable
 	providerAddrs []string
 
+	// publisherHttpAddrs is the HTTP addresses from which the IPNI chain is available
+	publisherHttpAddrs []multiaddr.Multiaddr
+
 	metadata []byte
 }
-
-// TODO: below strategy is purely:
-// - publish: include all MHs and a ContextID
-// - retract: no MHs, with the ContextID
-// What we want:
-// - above a threshold: publish and retract with ContextID
-// - below that threshold: batch together small publish over a time window, publish without ContextID, retract with all MHs
-// Note: batching could happen at the Catalog level, it doesn't have to be intertwined in the code below
 
 // publishWithContextID generate the IPNI advertisement and chunks for the publishing of the given catalog.
 // A ContextID is used as an identifier for easy retraction.
@@ -81,14 +77,13 @@ func retractRawMHs(ctx context.Context, cfg chainConfig, backend chainWriter, ca
 // generateEntries produce all the linked chunks necessary to store the multihashes entry of the given catalog
 func generateEntries(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (ipld.Link, error) {
 	mhs := make([]multihash.Multihash, 0, cfg.adEntriesChunkSize)
+
+	var err error
 	var next ipld.Link
 	var mhCount, chunkCount int
+
 	for iter := catalog.Iterator(); !iter.Done(); {
-		mh, err := iter.Next()
-		if err != nil {
-			return nil, err
-		}
-		mhs = append(mhs, mh)
+		mhs = append(mhs, iter.Next())
 		mhCount++
 		if len(mhs) >= cfg.adEntriesChunkSize {
 			next, err = generateEntriesChunk(ctx, backend, next, mhs)

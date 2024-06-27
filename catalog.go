@@ -13,18 +13,18 @@ type Catalog interface {
 	// Returning nil is allowed, to signify that there is no reasonable ContextID.
 	ID() []byte
 
+	// Count return the total number of multihashes, if known.
+	// If not, -1 should be returned.
+	Count() int
+
 	// Iterator returns an iterator for the multihashes.
 	Iterator() MhIterator
 }
 
 // MhIterator is an iterator over the collection of multihashes
 type MhIterator interface {
-	// Count return the total number of multihashes, if known.
-	// If not, -1 should be returned.
-	Count() int
-
 	// Next returns the next multihash.
-	Next() (multihash.Multihash, error)
+	Next() multihash.Multihash
 
 	// Done returns true if there is no more multihash.
 	Done() bool
