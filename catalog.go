@@ -1,6 +1,8 @@
 package herald
 
 import (
+	"context"
+
 	"github.com/multiformats/go-multihash"
 )
 
@@ -18,13 +20,13 @@ type Catalog interface {
 	Count() int
 
 	// Iterator returns an iterator for the multihashes.
-	Iterator() MhIterator
+	Iterator(ctx context.Context) (MhIterator, error)
 }
 
 // MhIterator is an iterator over the collection of multihashes
 type MhIterator interface {
 	// Next returns the next multihash.
-	Next() multihash.Multihash
+	Next(ctx context.Context) (multihash.Multihash, error)
 
 	// Done returns true if there is no more multihash.
 	Done() bool

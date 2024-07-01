@@ -16,11 +16,11 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-var _ chainWriter = &dsBackend{}
-var _ chainReader = &dsBackend{}
+var _ ChainWriter = &DsBackend{}
+var _ ChainReader = &DsBackend{}
 
-// dsBackend is an IPNI publishing backend that stores the chain in a datastore.Datastore.
-type dsBackend struct {
+// DsBackend is an IPNI publishing backend that stores the chain in a datastore.Datastore.
+type DsBackend struct {
 	locker sync.RWMutex // atomicity over the chain head
 	head   cid.Cid      // cache the head CID
 
@@ -28,15 +28,15 @@ type dsBackend struct {
 	ls ipld.LinkSystem
 }
 
-func newDsPublisher(ds datastore.Datastore) *dsBackend {
-	p := &dsBackend{ds: ds, head: cid.Undef}
+func NewDsPublisher(ds datastore.Datastore) *DsBackend {
+	p := &DsBackend{ds: ds, head: cid.Undef}
 	p.ls = cidlink.DefaultLinkSystem()
 	p.ls.StorageReadOpener = p.storageReadOpener
 	p.ls.StorageWriteOpener = p.storageWriteOpener
 	return p
 }
 
-func (p *dsBackend) storageReadOpener(ctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+func (p *DsBackend) storageReadOpener(ctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 	val, err := p.ds.Get(ctx.Ctx, dsKey(lnk))
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (p *dsBackend) storageReadOpener(ctx ipld.LinkContext, lnk ipld.Link) (io.R
 	return bytes.NewReader(val), nil
 }
 
-func (p *dsBackend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+func (p *DsBackend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
 	buf := bytesBuffersPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	return buf, func(lnk ipld.Link) error {
@@ -58,7 +58,7 @@ func dsKey(l ipld.Link) datastore.Key {
 }
 
 // UpdateHead perform an atomic update of the IPNI chain head
-func (p *dsBackend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
+func (p *DsBackend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
 	p.locker.Lock()
 	defer p.locker.Unlock()
 
@@ -77,7 +77,7 @@ func (p *dsBackend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (c
 
 var headKey = datastore.NewKey("head")
 
-func (p *dsBackend) getHead(ctx context.Context) (cid.Cid, error) {
+func (p *DsBackend) getHead(ctx context.Context) (cid.Cid, error) {
 	if p.head != cid.Undef {
 		return p.head, nil
 	}
@@ -98,7 +98,7 @@ func (p *dsBackend) getHead(ctx context.Context) (cid.Cid, error) {
 	}
 }
 
-func (p *dsBackend) setHead(ctx context.Context, newHead cid.Cid) error {
+func (p *DsBackend) setHead(ctx context.Context, newHead cid.Cid) error {
 	if !newHead.Defined() {
 		// sanity check
 		return fmt.Errorf("trying to set an undefined chain head")
@@ -113,13 +113,13 @@ func (p *dsBackend) setHead(ctx context.Context, newHead cid.Cid) error {
 }
 
 // Store record a new IPLD node into the backend
-func (p *dsBackend) Store(lnkCtx linking.LinkContext, lp datamodel.LinkPrototype, n datamodel.Node) (datamodel.Link, error) {
+func (p *DsBackend) Store(lnkCtx linking.LinkContext, lp datamodel.LinkPrototype, n datamodel.Node) (datamodel.Link, error) {
 	return p.ls.Store(lnkCtx, lp, n)
 }
 
 // GetHead return the cid of the IPNI chain head
 // Returns cid.Undef if the chain hasn't started yet.
-func (p *dsBackend) GetHead(ctx context.Context) (cid.Cid, error) {
+func (p *DsBackend) GetHead(ctx context.Context) (cid.Cid, error) {
 	p.locker.RLock()
 	defer p.locker.RUnlock()
 	return p.getHead(ctx)
@@ -127,7 +127,7 @@ func (p *dsBackend) GetHead(ctx context.Context) (cid.Cid, error) {
 
 // GetContent returns the raw content of an IPLD block of the IPNI chain.
 // Returns ErrContentNotFound if not found.
-func (p *dsBackend) GetContent(ctx context.Context, cid cid.Cid) ([]byte, error) {
+func (p *DsBackend) GetContent(ctx context.Context, cid cid.Cid) ([]byte, error) {
 	key := dsKey(cidlink.Link{Cid: cid})
 	switch value, err := p.ds.Get(ctx, key); {
 	case errors.Is(err, datastore.ErrNotFound):

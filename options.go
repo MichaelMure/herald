@@ -40,7 +40,7 @@ func newOptions(o ...Option) (*options, error) {
 		}
 	}
 	if opts.metadata == nil {
-		return nil, errors.New("metadata must be set")
+		return nil, errors.New("Metadata must be set")
 	}
 	if opts.providerAddrs == nil {
 		return nil, errors.New("at least one provider address must be set")

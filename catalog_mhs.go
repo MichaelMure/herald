@@ -1,42 +1,44 @@
 package herald
 
 import (
+	"context"
+
 	"github.com/multiformats/go-multihash"
 )
 
-func CatalogFromMultihashes(mhs ...multihash.Multihash) Catalog {
-	return mhCatalog(mhs)
+func CatalogFromMultihashes(mhs ...multihash.Multihash) MhCatalog {
+	return mhs
 }
 
-var _ Catalog = mhCatalog{}
+var _ Catalog = MhCatalog{}
 
-type mhCatalog []multihash.Multihash
+type MhCatalog []multihash.Multihash
 
-func (m mhCatalog) ID() []byte {
+func (m MhCatalog) ID() []byte {
 	return nil
 }
 
-func (m mhCatalog) Count() int {
+func (m MhCatalog) Count() int {
 	return len(m)
 }
 
-func (m mhCatalog) Iterator() MhIterator {
-	return mhIterator{catalog: m}
+func (m MhCatalog) Iterator(_ context.Context) (MhIterator, error) {
+	return mhIterator{catalog: m}, nil
 }
 
 var _ MhIterator = mhIterator{}
 
 type mhIterator struct {
-	catalog mhCatalog
+	catalog MhCatalog
 	index   int
 }
 
-func (m mhIterator) Next() multihash.Multihash {
+func (m mhIterator) Next(_ context.Context) (multihash.Multihash, error) {
 	if m.Done() {
 		panic("iterator already done")
 	}
 	defer func() { m.index++ }()
-	return m.catalog[m.index]
+	return m.catalog[m.index], nil
 }
 
 func (m mhIterator) Done() bool {

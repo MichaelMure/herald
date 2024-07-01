@@ -13,10 +13,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-// httpPublisher is an IPNI HTTP publisher that exposes the IPNI chain for retrieval.
-// It uses a chainWriter as storage and renders the records on demand.
-type httpPublisher struct {
-	backend chainReader
+// HttpPublisher is an IPNI HTTP publisher that exposes the IPNI chain for retrieval.
+// It uses a ChainWriter as storage and renders the records on demand.
+type HttpPublisher struct {
+	backend ChainReader
 	server  http.Server
 
 	// topic is the IPNI topic name on which the advertisement is published
@@ -25,8 +25,8 @@ type httpPublisher struct {
 	providerKey crypto.PrivKey
 }
 
-func newHttpPublisher(backend chainReader, listenAddr string, topic string, providerKey crypto.PrivKey) (*httpPublisher, error) {
-	pub := &httpPublisher{
+func NewHttpPublisher(backend ChainReader, listenAddr string, topic string, providerKey crypto.PrivKey) (*HttpPublisher, error) {
+	pub := &HttpPublisher{
 		backend: backend,
 		server: http.Server{
 			Addr:              listenAddr,
@@ -41,7 +41,7 @@ func newHttpPublisher(backend chainReader, listenAddr string, topic string, prov
 	return pub, nil
 }
 
-func (p *httpPublisher) Start() error {
+func (p *HttpPublisher) Start() error {
 	listener, err := net.Listen("tcp", p.server.Addr)
 	if err != nil {
 		return err
@@ -57,14 +57,14 @@ func (p *httpPublisher) Start() error {
 	return nil
 }
 
-func (p *httpPublisher) serveMux() *http.ServeMux {
+func (p *HttpPublisher) serveMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/head", p.handleGetHead)
 	mux.HandleFunc("/*", p.handleGetContent)
 	return mux
 }
 
-func (p *httpPublisher) handleGetHead(w http.ResponseWriter, r *http.Request) {
+func (p *HttpPublisher) handleGetHead(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 	default:
@@ -101,7 +101,7 @@ func (p *httpPublisher) handleGetHead(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *httpPublisher) handleGetContent(w http.ResponseWriter, r *http.Request) {
+func (p *HttpPublisher) handleGetContent(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 	default:
@@ -143,7 +143,7 @@ func (p *httpPublisher) handleGetContent(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (p *httpPublisher) Close() error {
+func (p *HttpPublisher) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return p.server.Shutdown(ctx)

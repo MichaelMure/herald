@@ -14,27 +14,27 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-type chainConfig struct {
-	// adEntriesChunkSize is the maximum number of multihashes in a block of advertisement
-	adEntriesChunkSize int
+type ChainConfig struct {
+	// AdEntriesChunkSize is the maximum number of multihashes in a block of advertisement
+	AdEntriesChunkSize int
 
-	// providerId is the libp2p identity of the IPNI publisher
-	providerId peer.ID
-	// providerKey is the keypair corresponding to providerId
-	providerKey crypto.PrivKey
+	// ProviderId is the libp2p identity of the IPNI publisher
+	ProviderId peer.ID
+	// ProviderKey is the keypair corresponding to ProviderId
+	ProviderKey crypto.PrivKey
 
-	// providerAddrs is the list of multiaddrs from which the content will be retrievable
-	providerAddrs []string
+	// ProviderAddrs is the list of multiaddrs from which the content will be retrievable
+	ProviderAddrs []string
 
-	// publisherHttpAddrs is the HTTP addresses from which the IPNI chain is available
-	publisherHttpAddrs []multiaddr.Multiaddr
+	// PublisherHttpAddrs is the HTTP addresses from which the IPNI chain is available
+	PublisherHttpAddrs []multiaddr.Multiaddr
 
-	metadata []byte
+	Metadata []byte
 }
 
-// publishWithContextID generate the IPNI advertisement and chunks for the publishing of the given catalog.
+// PublishWithContextID generate the IPNI advertisement and chunks for the publishing of the given catalog.
 // A ContextID is used as an identifier for easy retraction.
-func publishWithContextID(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+func PublishWithContextID(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error) {
 	if len(catalog.ID()) == 0 {
 		return cid.Undef, fmt.Errorf("no valid ContextID to publish")
 	}
@@ -44,48 +44,58 @@ func publishWithContextID(ctx context.Context, cfg chainConfig, backend chainWri
 	if err != nil {
 		return cid.Undef, err
 	}
-	// generate the root advertisement with all the metadata
+	// generate the root advertisement with all the Metadata
 	return generateAdvertisement(ctx, cfg, backend, catalog.ID(), entries, false)
 }
 
-// retractWithContextID generate the IPNI advertisement to retract the given catalog, using a ContextID.
-func retractWithContextID(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+// RetractWithContextID generate the IPNI advertisement to retract the given catalog, using a ContextID.
+func RetractWithContextID(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error) {
 	return generateAdvertisement(ctx, cfg, backend, catalog.ID(), schema.NoEntries, true)
 }
 
-// publishRawMHs generate the IPNI advertisement and chunks for the publishing of the given catalog, without ContextID.
-func publishRawMHs(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+// PublishRawMHs generate the IPNI advertisement and chunks for the publishing of the given catalog, without ContextID.
+func PublishRawMHs(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error) {
 	// generate the chain of chunks holding the multihashes
 	entries, err := generateEntries(ctx, cfg, backend, catalog)
 	if err != nil {
 		return cid.Undef, err
 	}
-	// generate the root advertisement with all the metadata
+	// generate the root advertisement with all the Metadata
 	return generateAdvertisement(ctx, cfg, backend, nil, entries, false)
 }
 
-func retractRawMHs(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error) {
+// RetractRawMHs generate the IPNI advertisement and chunks for the retraction of the given catalog, without ContextID.
+func RetractRawMHs(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error) {
 	// generate the chain of chunks holding the multihashes
 	entries, err := generateEntries(ctx, cfg, backend, catalog)
 	if err != nil {
 		return cid.Undef, err
 	}
-	// generate the root retract advertisement with all the metadata
+	// generate the root retract advertisement with all the Metadata
 	return generateAdvertisement(ctx, cfg, backend, nil, entries, true)
 }
 
 // generateEntries produce all the linked chunks necessary to store the multihashes entry of the given catalog
-func generateEntries(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (ipld.Link, error) {
-	mhs := make([]multihash.Multihash, 0, cfg.adEntriesChunkSize)
+func generateEntries(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (ipld.Link, error) {
+	mhs := make([]multihash.Multihash, 0, cfg.AdEntriesChunkSize)
 
 	var err error
 	var next ipld.Link
+	var mh multihash.Multihash
 	var mhCount, chunkCount int
 
-	for iter := catalog.Iterator(); !iter.Done(); {
-		mhs = append(mhs, iter.Next())
+	iter, err := catalog.Iterator(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for !iter.Done() {
+		mh, err = iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		mhs = append(mhs, mh)
 		mhCount++
-		if len(mhs) >= cfg.adEntriesChunkSize {
+		if len(mhs) >= cfg.AdEntriesChunkSize {
 			next, err = generateEntriesChunk(ctx, backend, next, mhs)
 			if err != nil {
 				return nil, err
@@ -108,7 +118,7 @@ func generateEntries(ctx context.Context, cfg chainConfig, backend chainWriter, 
 
 // generateEntriesChunk produce a single multihashes entry chunk containing mhs.
 // If next is not nil, the produced chunk will be chained with next.
-func generateEntriesChunk(ctx context.Context, backend chainWriter, next ipld.Link, mhs []multihash.Multihash) (ipld.Link, error) {
+func generateEntriesChunk(ctx context.Context, backend ChainWriter, next ipld.Link, mhs []multihash.Multihash) (ipld.Link, error) {
 	chunk, err := schema.EntryChunk{
 		Entries: mhs,
 		Next:    next,
@@ -119,7 +129,8 @@ func generateEntriesChunk(ctx context.Context, backend chainWriter, next ipld.Li
 	return backend.Store(ipld.LinkContext{Ctx: ctx}, schema.Linkproto, chunk)
 }
 
-func generateAdvertisement(ctx context.Context, cfg chainConfig, backend chainWriter, id CatalogID, entries ipld.Link, isRm bool) (cid.Cid, error) {
+// generateAdvertisement produce an advertisement for the given chunk entries.
+func generateAdvertisement(ctx context.Context, cfg ChainConfig, backend ChainWriter, id CatalogID, entries ipld.Link, isRm bool) (cid.Cid, error) {
 	var newHead cid.Cid
 
 	err := backend.UpdateHead(ctx, func(head cid.Cid) (cid.Cid, error) {
@@ -130,14 +141,14 @@ func generateAdvertisement(ctx context.Context, cfg chainConfig, backend chainWr
 
 		ad := schema.Advertisement{
 			PreviousID: previousID,
-			Provider:   cfg.providerId.String(),
-			Addresses:  cfg.providerAddrs,
+			Provider:   cfg.ProviderId.String(),
+			Addresses:  cfg.ProviderAddrs,
 			Entries:    entries,
 			ContextID:  id,
-			Metadata:   cfg.metadata,
+			Metadata:   cfg.Metadata,
 			IsRm:       isRm,
 		}
-		if err := ad.Sign(cfg.providerKey); err != nil {
+		if err := ad.Sign(cfg.ProviderKey); err != nil {
 			logger.Errorw("failed to sign advertisement", "err", err)
 			return cid.Undef, err
 		}

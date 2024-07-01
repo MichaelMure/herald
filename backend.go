@@ -9,8 +9,8 @@ import (
 	"github.com/ipld/go-ipld-prime/linking"
 )
 
-// chainWriter is a write access to an IPNI chain backend
-type chainWriter interface {
+// ChainWriter is a write access to an IPNI chain backend
+type ChainWriter interface {
 	// UpdateHead perform an atomic update of the IPNI chain head
 	UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error
 
@@ -27,8 +27,8 @@ type chainWriter interface {
 
 var ErrContentNotFound = errors.New("content is not found")
 
-// chainReader is a read access to an IPNI chain backend
-type chainReader interface {
+// ChainReader is a read access to an IPNI chain backend
+type ChainReader interface {
 	// GetHead return the cid of the IPNI chain head
 	// Returns cid.Undef if the chain hasn't started yet.
 	GetHead(ctx context.Context) (cid.Cid, error)

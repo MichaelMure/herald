@@ -20,16 +20,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-var _ chainWriter = &s3Backend{}
+var _ ChainWriter = &S3Backend{}
 
-// s3Backend is an IPNI publishing backend storing the IPNI chain in S3, in a form that can directly be exposed publicly
+// S3Backend is an IPNI publishing backend storing the IPNI chain in S3, in a form that can directly be exposed publicly
 // through HTTP. As such, it doesn't need an additional publisher.
 //
 // Note on the implementation: the idea is to "pre-render" the chain into the expected format described by
 // https://github.com/ipni/specs/blob/main/IPNI_HTTP_PROVIDER.md. Yet we still need an ipld.LinkSystem to process the
 // IPLD nodes into blocks. To do so, we attach a StorageWriteOpener function that will push the block to S3 in the correct
 // manner.
-type s3Backend struct {
+type S3Backend struct {
 	locker sync.RWMutex // atomicity over the chain head
 	head   cid.Cid      // cache the head CID
 
@@ -43,10 +43,10 @@ type s3Backend struct {
 	providerKey crypto.PrivKey
 }
 
-func newS3Backend(awsConfig aws.Config, bucket string, topic string, providerKey crypto.PrivKey) *s3Backend {
+func NewS3Backend(awsConfig aws.Config, bucket string, topic string, providerKey crypto.PrivKey) *S3Backend {
 	// TODO: make client
 
-	s := &s3Backend{
+	s := &S3Backend{
 		bucket:      aws.String(bucket),
 		topic:       topic,
 		providerKey: providerKey,
@@ -56,7 +56,7 @@ func newS3Backend(awsConfig aws.Config, bucket string, topic string, providerKey
 	return s
 }
 
-func (s *s3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+func (s *S3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
 	buf := bytesBuffersPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	return buf, func(lnk ipld.Link) error {
@@ -91,7 +91,7 @@ func (s *s3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, 
 	}, nil
 }
 
-func (s *s3Backend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
+func (s *S3Backend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (cid.Cid, error)) error {
 	s.locker.Lock()
 	defer s.locker.Unlock()
 
@@ -108,11 +108,11 @@ func (s *s3Backend) UpdateHead(ctx context.Context, fn func(prevHead cid.Cid) (c
 	return s.setHead(ctx, newHead)
 }
 
-func (s *s3Backend) Store(lnkCtx linking.LinkContext, lp datamodel.LinkPrototype, n datamodel.Node) (datamodel.Link, error) {
+func (s *S3Backend) Store(lnkCtx linking.LinkContext, lp datamodel.LinkPrototype, n datamodel.Node) (datamodel.Link, error) {
 	return s.ls.Store(lnkCtx, lp, n)
 }
 
-func (s *s3Backend) getHead(ctx context.Context) (cid.Cid, error) {
+func (s *S3Backend) getHead(ctx context.Context) (cid.Cid, error) {
 	if s.head != cid.Undef {
 		return s.head, nil
 	}
@@ -144,7 +144,7 @@ func (s *s3Backend) getHead(ctx context.Context) (cid.Cid, error) {
 	return s.head, nil
 }
 
-func (s *s3Backend) setHead(ctx context.Context, newHead cid.Cid) error {
+func (s *S3Backend) setHead(ctx context.Context, newHead cid.Cid) error {
 	if !newHead.Defined() {
 		// sanity check
 		return fmt.Errorf("trying to set an undefined chain head")

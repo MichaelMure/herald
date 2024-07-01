@@ -20,7 +20,7 @@ const defaultMaxMHsPerAdvertisement = 200_000
 
 const defaultMaxDelay = 30 * time.Second
 
-type batchConfig struct {
+type BatchConfig struct {
 	// countThreshold is the threshold to separate two publishing strategies:
 	// - above the threshold: publish as a single advertisement, with a ContextID for easy retraction
 	// - below the threshold: batch together publishes and retract, with no ContextID
@@ -33,21 +33,21 @@ type batchConfig struct {
 	maxDelay time.Duration
 }
 
-// catalogBatcher is a batcher to publish/retract Catalog. Strategy is as follows:
+// CatalogBatcher is a batcher to publish/retract Catalog. Strategy is as follows:
 // - above the threshold: publish as a single advertisement, with a ContextID for easy retraction
 // - below the threshold: batch together publishes and retract, with no ContextID
-type catalogBatcher struct {
-	batchConfig batchConfig
-	chainConfig chainConfig
-	backend     chainWriter
+type CatalogBatcher struct {
+	batchConfig BatchConfig
+	chainConfig ChainConfig
+	backend     ChainWriter
 	announcer   announce.Sender
 
 	publish chan Catalog
 	retract chan Catalog
 }
 
-func startCatalogBatcher(batchConfig batchConfig, chainCfg chainConfig, backend chainWriter, announcer announce.Sender) *catalogBatcher {
-	b := &catalogBatcher{
+func StartCatalogBatcher(batchConfig BatchConfig, chainCfg ChainConfig, backend ChainWriter, announcer announce.Sender) *CatalogBatcher {
+	b := &CatalogBatcher{
 		batchConfig: batchConfig,
 		chainConfig: chainCfg,
 		backend:     backend,
@@ -56,20 +56,20 @@ func startCatalogBatcher(batchConfig batchConfig, chainCfg chainConfig, backend 
 		retract:     make(chan Catalog),
 	}
 
-	go b.runBatcher(b.publish, publishRawMHs)
-	go b.runBatcher(b.retract, retractRawMHs)
+	go b.runBatcher(b.publish, PublishRawMHs)
+	go b.runBatcher(b.retract, RetractRawMHs)
 
 	return b
 }
 
-func (b *catalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) error {
+func (b *CatalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) error {
 	if catalog.Count() > b.batchConfig.countThreshold {
 		// for large catalogs, we don't do batching
-		newHead, err := publishWithContextID(ctx, b.chainConfig, b.backend, catalog)
+		newHead, err := PublishWithContextID(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
 			return err
 		}
-		return announce.Send(ctx, newHead, b.chainConfig.publisherHttpAddrs, b.announcer)
+		return announce.Send(ctx, newHead, b.chainConfig.PublisherHttpAddrs, b.announcer)
 	}
 
 	select {
@@ -80,14 +80,14 @@ func (b *catalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) er
 	}
 }
 
-func (b *catalogBatcher) RetractCatalog(ctx context.Context, catalog Catalog) error {
+func (b *CatalogBatcher) RetractCatalog(ctx context.Context, catalog Catalog) error {
 	if catalog.Count() > b.batchConfig.countThreshold {
 		// for large catalogs, we don't do batching
-		newHead, err := retractWithContextID(ctx, b.chainConfig, b.backend, catalog)
+		newHead, err := RetractWithContextID(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
 			return err
 		}
-		return announce.Send(ctx, newHead, b.chainConfig.publisherHttpAddrs, b.announcer)
+		return announce.Send(ctx, newHead, b.chainConfig.PublisherHttpAddrs, b.announcer)
 	}
 
 	select {
@@ -98,7 +98,7 @@ func (b *catalogBatcher) RetractCatalog(ctx context.Context, catalog Catalog) er
 	}
 }
 
-func (b *catalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context, cfg chainConfig, backend chainWriter, catalog Catalog) (cid.Cid, error)) {
+func (b *CatalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error)) {
 	var counter uint64
 	var timer <-chan time.Time
 
@@ -124,7 +124,7 @@ func (b *catalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context
 			return
 		}
 
-		err = announce.Send(ctx, newHead, b.chainConfig.publisherHttpAddrs, b.announcer)
+		err = announce.Send(ctx, newHead, b.chainConfig.PublisherHttpAddrs, b.announcer)
 		if err != nil {
 			logger.Errorw("failed to publish new head", "err", err, "head", newHead.String())
 			return

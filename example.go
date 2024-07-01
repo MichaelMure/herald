@@ -8,21 +8,21 @@ import (
 func Example() {
 	awsCfg := aws.NewConfig()
 
-	backend := newS3Backend(awsCfg, "bucket", "/indexer/ingest/mainnet", keys)
+	backend := NewS3Backend(awsCfg, "bucket", "/indexer/ingest/mainnet", keys)
 
 	announcer := httpsender.New()
 
-	batcher := startCatalogBatcher(batchConfig{
+	batcher := StartCatalogBatcher(BatchConfig{
 		countThreshold:         1000,
 		maxDelay:               defaultMaxDelay,
 		maxMHsPerAdvertisement: defaultMaxMHsPerAdvertisement,
-	}, chainConfig{
-		adEntriesChunkSize: 0,
-		providerId:         "",
-		providerKey:        nil,
-		providerAddrs:      nil,
-		publisherHttpAddrs: nil,
-		metadata:           nil,
+	}, ChainConfig{
+		AdEntriesChunkSize: 0,
+		ProviderId:         "",
+		ProviderKey:        nil,
+		ProviderAddrs:      nil,
+		PublisherHttpAddrs: nil,
+		Metadata:           nil,
 	}, backend, announcer)
 
 	for {

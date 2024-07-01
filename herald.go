@@ -13,7 +13,7 @@ var (
 
 type Herald struct {
 	*options
-	publisher *httpPublisher
+	publisher *HttpPublisher
 
 	// backend
 	// optional: publisher (http)
@@ -32,7 +32,7 @@ func New(o ...Option) (*Herald, error) {
 	// if err != nil {
 	// 	return nil, err
 	// }
-	// h.publisher, err = newHttpPublisher(h, dspub)
+	// h.publisher, err = NewHttpPublisher(h, dspub)
 	// if err != nil {
 	// 	return nil, err
 	// }
