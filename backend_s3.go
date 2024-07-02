@@ -44,9 +44,8 @@ type S3Backend struct {
 }
 
 func NewS3Backend(awsConfig aws.Config, bucket string, topic string, providerKey crypto.PrivKey) *S3Backend {
-	// TODO: make client
-
 	s := &S3Backend{
+		client:      s3.NewFromConfig(awsConfig),
 		bucket:      aws.String(bucket),
 		topic:       topic,
 		providerKey: providerKey,

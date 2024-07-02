@@ -9,22 +9,23 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-func CatalogFromCar(path string) (*CarCatalog, error) {
+func CatalogFromCar(path string, id []byte) (*CarCatalog, error) {
 	car, err := blockstore.OpenReadOnly(path)
 	if err != nil {
 		return nil, err
 	}
-	return &CarCatalog{car: car}, nil
+	return &CarCatalog{car: car, id: id}, nil
 }
 
 var _ Catalog = &CarCatalog{}
 
 type CarCatalog struct {
 	car *blockstore.ReadOnly
+	id  []byte
 }
 
 func (c *CarCatalog) ID() []byte {
-	return nil
+	return c.id
 }
 
 func (c *CarCatalog) Count() int {
@@ -60,8 +61,8 @@ type CarIterator struct {
 	next multihash.Multihash
 }
 
-func (c *CarIterator) Next(_ context.Context) (multihash.Multihash, error) {
-	return c.next, nil
+func (c *CarIterator) Next() multihash.Multihash {
+	return c.next
 }
 
 func (c *CarIterator) Done() bool {

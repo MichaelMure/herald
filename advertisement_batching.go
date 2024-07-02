@@ -16,21 +16,21 @@ import (
 //	> Practically, this means that each individual advertisement can hold up to approximately 40 million multihashes.
 //
 // We, however, will remain lower to avoid memory spikes. There is almost zero upside for a higher value.
-const defaultMaxMHsPerAdvertisement = 200_000
+const DefaultMaxMHsPerAdvertisement = 200_000
 
-const defaultMaxDelay = 30 * time.Second
+const DefaultMaxDelay = 30 * time.Second
 
 type BatchConfig struct {
-	// countThreshold is the threshold to separate two publishing strategies:
+	// CountThreshold is the threshold to separate two publishing strategies:
 	// - above the threshold: publish as a single advertisement, with a ContextID for easy retraction
 	// - below the threshold: batch together publishes and retract, with no ContextID
-	countThreshold int
+	CountThreshold int
 
-	// maxMHsPerAdvertisement is the maximum number of multihashes per advertisement, meaning per batch
-	maxMHsPerAdvertisement int
+	// MaxMHsPerAdvertisement is the maximum number of multihashes per advertisement, meaning per batch
+	MaxMHsPerAdvertisement int
 
-	// maxDelay is the maximum delay after which a batch triggers
-	maxDelay time.Duration
+	// MaxDelay is the maximum delay after which a batch triggers
+	MaxDelay time.Duration
 }
 
 // CatalogBatcher is a batcher to publish/retract Catalog. Strategy is as follows:
@@ -63,7 +63,7 @@ func StartCatalogBatcher(batchConfig BatchConfig, chainCfg ChainConfig, backend 
 }
 
 func (b *CatalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) error {
-	if catalog.Count() > b.batchConfig.countThreshold {
+	if catalog.Count() > b.batchConfig.CountThreshold {
 		// for large catalogs, we don't do batching
 		newHead, err := PublishWithContextID(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
@@ -81,7 +81,7 @@ func (b *CatalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) er
 }
 
 func (b *CatalogBatcher) RetractCatalog(ctx context.Context, catalog Catalog) error {
-	if catalog.Count() > b.batchConfig.countThreshold {
+	if catalog.Count() > b.batchConfig.CountThreshold {
 		// for large catalogs, we don't do batching
 		newHead, err := RetractWithContextID(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
@@ -102,8 +102,8 @@ func (b *CatalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context
 	var counter uint64
 	var timer <-chan time.Time
 
-	// pre-alloc to countThreshold as a first reasonable approximation
-	batch := make([]multihash.Multihash, 0, b.batchConfig.countThreshold)
+	// pre-alloc to CountThreshold as a first reasonable approximation
+	batch := make([]multihash.Multihash, 0, b.batchConfig.CountThreshold)
 
 	send := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -111,7 +111,7 @@ func (b *CatalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context
 
 		defer func() {
 			// reset the input
-			batch = make([]multihash.Multihash, 0, b.batchConfig.countThreshold)
+			batch = make([]multihash.Multihash, 0, b.batchConfig.CountThreshold)
 		}()
 
 		// kill the timer and drain the channel
@@ -137,20 +137,28 @@ func (b *CatalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context
 			send()
 
 		case catalog := <-ch:
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			iter, err := catalog.Iterator(ctx)
+			cancel()
+			if err != nil {
+				logger.Errorw("failed to get catalog iterator", "err", err)
+				continue
+			}
+
 			// Note: we always consume the whole catalog, even if that means overshooting the batch limit
-			for iter := catalog.Iterator(); !iter.Done(); {
+			for !iter.Done() {
 				batch = append(batch, iter.Next())
 				counter++
 			}
 
-			if len(batch) >= b.batchConfig.maxMHsPerAdvertisement {
+			if len(batch) >= b.batchConfig.MaxMHsPerAdvertisement {
 				send()
 				continue
 			}
 
 			// start the timer if needed
 			if timer == nil {
-				timer = time.After(b.batchConfig.maxDelay)
+				timer = time.After(b.batchConfig.MaxDelay)
 			}
 		}
 	}

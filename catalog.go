@@ -26,7 +26,7 @@ type Catalog interface {
 // MhIterator is an iterator over the collection of multihashes
 type MhIterator interface {
 	// Next returns the next multihash.
-	Next(ctx context.Context) (multihash.Multihash, error)
+	Next() multihash.Multihash
 
 	// Done returns true if there is no more multihash.
 	Done() bool

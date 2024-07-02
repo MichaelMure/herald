@@ -14,21 +14,29 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
+// DefaultAdEntriesChunkSize is the default value for the maximum number of multihashes in a chunk
+// This value was taken from index-provider
+const DefaultAdEntriesChunkSize = 16384
+
 type ChainConfig struct {
-	// AdEntriesChunkSize is the maximum number of multihashes in a block of advertisement
+	// AdEntriesChunkSize is the maximum number of multihashes in a chunk
 	AdEntriesChunkSize int
 
-	// ProviderId is the libp2p identity of the IPNI publisher
-	ProviderId peer.ID
-	// ProviderKey is the keypair corresponding to ProviderId
-	ProviderKey crypto.PrivKey
+	// PublisherKey is the keypair corresponding to PublisherId
+	PublisherKey crypto.PrivKey
 
-	// ProviderAddrs is the list of multiaddrs from which the content will be retrievable
-	ProviderAddrs []string
+	// PublisherID is the peer.ID matching PublisherKey
+	PublisherID peer.ID
 
 	// PublisherHttpAddrs is the HTTP addresses from which the IPNI chain is available
 	PublisherHttpAddrs []multiaddr.Multiaddr
 
+	// ProviderAddrs is the list of multiaddrs from which the content will be retrievable
+	ProviderAddrs []string
+
+	// Metadata contains a protocol identifier and, optionally, protocol-specific "following metadata".
+	// See https://github.com/ipni/specs/blob/main/IPNI.md#metadata
+	// It can be constructed, for example, with metadata.Default.New(metadata.Bitswap{})
 	Metadata []byte
 }
 
@@ -81,7 +89,6 @@ func generateEntries(ctx context.Context, cfg ChainConfig, backend ChainWriter, 
 
 	var err error
 	var next ipld.Link
-	var mh multihash.Multihash
 	var mhCount, chunkCount int
 
 	iter, err := catalog.Iterator(ctx)
@@ -89,11 +96,7 @@ func generateEntries(ctx context.Context, cfg ChainConfig, backend ChainWriter, 
 		return nil, err
 	}
 	for !iter.Done() {
-		mh, err = iter.Next(ctx)
-		if err != nil {
-			return nil, err
-		}
-		mhs = append(mhs, mh)
+		mhs = append(mhs, iter.Next())
 		mhCount++
 		if len(mhs) >= cfg.AdEntriesChunkSize {
 			next, err = generateEntriesChunk(ctx, backend, next, mhs)
@@ -141,14 +144,14 @@ func generateAdvertisement(ctx context.Context, cfg ChainConfig, backend ChainWr
 
 		ad := schema.Advertisement{
 			PreviousID: previousID,
-			Provider:   cfg.ProviderId.String(),
+			Provider:   cfg.PublisherID.String(),
 			Addresses:  cfg.ProviderAddrs,
 			Entries:    entries,
 			ContextID:  id,
 			Metadata:   cfg.Metadata,
 			IsRm:       isRm,
 		}
-		if err := ad.Sign(cfg.ProviderKey); err != nil {
+		if err := ad.Sign(cfg.PublisherKey); err != nil {
 			logger.Errorw("failed to sign advertisement", "err", err)
 			return cid.Undef, err
 		}

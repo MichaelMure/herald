@@ -13,13 +13,13 @@ func Example() {
 	announcer := httpsender.New()
 
 	batcher := StartCatalogBatcher(BatchConfig{
-		countThreshold:         1000,
-		maxDelay:               defaultMaxDelay,
-		maxMHsPerAdvertisement: defaultMaxMHsPerAdvertisement,
+		CountThreshold:         1000,
+		MaxDelay:               DefaultMaxDelay,
+		MaxMHsPerAdvertisement: DefaultMaxMHsPerAdvertisement,
 	}, ChainConfig{
 		AdEntriesChunkSize: 0,
-		ProviderId:         "",
-		ProviderKey:        nil,
+		PublisherId:        "",
+		PublisherKey:       nil,
 		ProviderAddrs:      nil,
 		PublisherHttpAddrs: nil,
 		Metadata:           nil,

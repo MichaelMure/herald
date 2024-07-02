@@ -33,12 +33,12 @@ type mhIterator struct {
 	index   int
 }
 
-func (m mhIterator) Next(_ context.Context) (multihash.Multihash, error) {
+func (m mhIterator) Next() multihash.Multihash {
 	if m.Done() {
 		panic("iterator already done")
 	}
 	defer func() { m.index++ }()
-	return m.catalog[m.index], nil
+	return m.catalog[m.index]
 }
 
 func (m mhIterator) Done() bool {
