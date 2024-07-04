@@ -106,7 +106,7 @@ func (b *CatalogBatcher) runBatcher(ch chan Catalog, fn func(ctx context.Context
 	batch := make([]multihash.Multihash, 0, b.batchConfig.CountThreshold)
 
 	send := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		defer func() {

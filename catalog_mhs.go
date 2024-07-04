@@ -23,17 +23,17 @@ func (m MhCatalog) Count() int {
 }
 
 func (m MhCatalog) Iterator(_ context.Context) (MhIterator, error) {
-	return mhIterator{catalog: m}, nil
+	return &mhIterator{catalog: m}, nil
 }
 
-var _ MhIterator = mhIterator{}
+var _ MhIterator = &mhIterator{}
 
 type mhIterator struct {
 	catalog MhCatalog
 	index   int
 }
 
-func (m mhIterator) Next() multihash.Multihash {
+func (m *mhIterator) Next() multihash.Multihash {
 	if m.Done() {
 		panic("iterator already done")
 	}
@@ -41,6 +41,6 @@ func (m mhIterator) Next() multihash.Multihash {
 	return m.catalog[m.index]
 }
 
-func (m mhIterator) Done() bool {
+func (m *mhIterator) Done() bool {
 	return m.index >= len(m.catalog)
 }

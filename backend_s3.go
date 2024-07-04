@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/ipfs/go-cid"
@@ -33,9 +34,10 @@ type S3Backend struct {
 	locker sync.RWMutex // atomicity over the chain head
 	head   cid.Cid      // cache the head CID
 
-	client *s3.Client
-	bucket *string
-	ls     ipld.LinkSystem
+	client   *s3.Client
+	uploader *manager.Uploader
+	bucket   *string
+	ls       ipld.LinkSystem
 
 	// topic is the IPNI topic name on which the advertisement is published
 	topic string
@@ -50,6 +52,7 @@ func NewS3Backend(awsConfig aws.Config, bucket string, topic string, providerKey
 		topic:       topic,
 		providerKey: providerKey,
 	}
+	s.uploader = manager.NewUploader(s.client)
 	s.ls = cidlink.DefaultLinkSystem()
 	s.ls.StorageWriteOpener = s.storageWriteOpener
 	return s
@@ -79,7 +82,10 @@ func (s *S3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, 
 			return fmt.Errorf("unknown block codec, cid %s, coded %v", c.String(), c.Prefix().Codec)
 		}
 
-		_, err := s.client.PutObject(linkCtx.Ctx, &s3.PutObjectInput{
+		// Even though PutObjectInput ask for an io.Reader for the body, an
+		// io.ReadSeeker is required. This is why we use the uploader, that
+		// will manager that complexity.
+		_, err := s.uploader.Upload(linkCtx.Ctx, &s3.PutObjectInput{
 			Bucket:       s.bucket,
 			Key:          aws.String(key),
 			Body:         buf,
@@ -120,7 +126,7 @@ func (s *S3Backend) getHead(ctx context.Context) (cid.Cid, error) {
 		Bucket: s.bucket,
 		Key:    aws.String("head"),
 	})
-	var noSuchKey *types.NoSuchKey
+	var noSuchKey *types.NoSuchBucket
 	if errors.As(err, &noSuchKey) {
 		return cid.Undef, nil
 	}

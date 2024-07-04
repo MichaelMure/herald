@@ -69,7 +69,7 @@ func (c *CarIterator) Done() bool {
 	val, ok := <-c.c
 	if ok {
 		c.next = val.Hash()
-		return true
+		return false
 	}
-	return false
+	return true
 }
