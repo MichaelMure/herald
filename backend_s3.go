@@ -82,6 +82,8 @@ func (s *S3Backend) storageWriteOpener(linkCtx linking.LinkContext) (io.Writer, 
 			return fmt.Errorf("unknown block codec, cid %s, coded %v", c.String(), c.Prefix().Codec)
 		}
 
+		// TODO: pre-gzip the body and set the correct HTTP header to save space, assuming that the remote indexer can ingest gzipped
+
 		// Even though PutObjectInput ask for an io.Reader for the body, an
 		// io.ReadSeeker is required. This is why we use the uploader, that
 		// will manager that complexity.
@@ -124,9 +126,9 @@ func (s *S3Backend) getHead(ctx context.Context) (cid.Cid, error) {
 
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: s.bucket,
-		Key:    aws.String("head"),
+		Key:    aws.String("/ipni/v1/ad/head"),
 	})
-	var noSuchKey *types.NoSuchBucket
+	var noSuchKey *types.NoSuchKey
 	if errors.As(err, &noSuchKey) {
 		return cid.Undef, nil
 	}

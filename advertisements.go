@@ -142,6 +142,10 @@ func generateAdvertisement(ctx context.Context, cfg ChainConfig, backend ChainWr
 			previousID = cidlink.Link{Cid: head}
 		}
 
+		if entries == nil {
+			entries = schema.NoEntries
+		}
+
 		ad := schema.Advertisement{
 			PreviousID: previousID,
 			Provider:   cfg.PublisherID.String(),

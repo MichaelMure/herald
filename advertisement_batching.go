@@ -31,6 +31,12 @@ type BatchConfig struct {
 
 	// MaxDelay is the maximum delay after which a batch triggers
 	MaxDelay time.Duration
+
+	// allow overrides for testing
+	publishWithContextID func(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error)
+	retractWithContextID func(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error)
+	publishRawMHs        func(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error)
+	retractRawMHs        func(ctx context.Context, cfg ChainConfig, backend ChainWriter, catalog Catalog) (cid.Cid, error)
 }
 
 // CatalogBatcher is a batcher to publish/retract Catalog. Strategy is as follows:
@@ -56,16 +62,31 @@ func StartCatalogBatcher(batchConfig BatchConfig, chainCfg ChainConfig, backend 
 		retract:     make(chan Catalog),
 	}
 
-	go b.runBatcher(b.publish, PublishRawMHs)
-	go b.runBatcher(b.retract, RetractRawMHs)
+	publish := batchConfig.publishRawMHs
+	if publish == nil {
+		publish = PublishRawMHs
+	}
+
+	retract := batchConfig.retractRawMHs
+	if retract == nil {
+		retract = RetractRawMHs
+	}
+
+	go b.runBatcher(b.publish, publish)
+	go b.runBatcher(b.retract, retract)
 
 	return b
 }
 
 func (b *CatalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) error {
 	if catalog.Count() > b.batchConfig.CountThreshold {
+		publish := b.batchConfig.publishWithContextID
+		if publish == nil {
+			publish = PublishWithContextID
+		}
+
 		// for large catalogs, we don't do batching
-		newHead, err := PublishWithContextID(ctx, b.chainConfig, b.backend, catalog)
+		newHead, err := publish(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
 			return err
 		}
@@ -82,8 +103,13 @@ func (b *CatalogBatcher) PublishCatalog(ctx context.Context, catalog Catalog) er
 
 func (b *CatalogBatcher) RetractCatalog(ctx context.Context, catalog Catalog) error {
 	if catalog.Count() > b.batchConfig.CountThreshold {
+		retract := b.batchConfig.retractWithContextID
+		if retract == nil {
+			retract = RetractWithContextID
+		}
+
 		// for large catalogs, we don't do batching
-		newHead, err := RetractWithContextID(ctx, b.chainConfig, b.backend, catalog)
+		newHead, err := retract(ctx, b.chainConfig, b.backend, catalog)
 		if err != nil {
 			return err
 		}
